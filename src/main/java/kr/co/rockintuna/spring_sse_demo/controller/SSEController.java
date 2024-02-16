@@ -5,44 +5,36 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
-import static java.lang.Thread.sleep;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 @RestController
 public class SSEController {
 
-    private boolean hasMessage = false;
-    private String message = null;
+    private List<SseEmitter> emitterList = new ArrayList<>();
 
     @GetMapping("/stream-sse-mvc")
-    public SseEmitter streamSseMvc() {
+    public SseEmitter streamSseMvc() throws IOException {
         SseEmitter emitter = new SseEmitter();
-        ExecutorService sseMvcExecutor = Executors.newSingleThreadExecutor();
-        sseMvcExecutor.execute(() -> {
-            try {
-                while (true) {
-                    while (!hasMessage) {
-                        sleep(1000L);
-                    }
-                    SseEmitter.SseEventBuilder event = SseEmitter.event()
-                            .data(message)
-                            .id("0")
-                            .name("sse event - mvc");
-                    emitter.send(event);
-                    hasMessage = false;
-                }
-            } catch (Exception ex) {
-                emitter.completeWithError(ex);
-            }
+        emitter.send(SseEmitter.event()
+                .name("connect")         // 해당 이벤트의 이름 지정
+                .data("connected!"));
+        emitter.onCompletion(() -> emitterList.remove(emitter));
+        emitter.onTimeout(() -> emitterList.remove(emitter));
+        emitter.onError((ex) -> {
+            System.out.println(ex.getMessage());
+            emitterList.remove(emitter);
         });
+        emitterList.add(emitter);
         return emitter;
     }
 
     @GetMapping("/push")
-    public void push(@RequestParam("message") String message) {
-        this.hasMessage = true;
-        this.message = message;
+    public void push(@RequestParam("message") String message) throws IOException {
+        System.out.println(emitterList.size());
+        for (SseEmitter sseEmitter : emitterList) {
+            sseEmitter.send(message);
+        }
     }
 }
